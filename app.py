@@ -1,72 +1,57 @@
-# # app.py
-# from bluetooth_manager import BluetoothManager
-# from audio_router import AudioRouter
-
-# def main():
-#     bt_manager = BluetoothManager()
-#     audio_router = AudioRouter()
-
-#     print("1. Scan for Bluetooth Devices")
-#     print("2. List Connected Devices")
-#     print("3. List Audio Sinks (Bluetooth Devices)")
-#     print("4. List Audio Applications")
-#     print("5. Route Application Audio to Device")
-
-#     choice = input("Enter your choice: ")
-
-#     if choice == '1':
-#         bt_manager.list_devices()
-#     elif choice == '2':
-#         bt_manager.list_devices()
-#     elif choice == '3':
-#         audio_router.list_sinks()
-#     elif choice == '4':
-#         audio_router.list_applications()
-#     elif choice == '5':
-#         stream_id = input("Enter Stream ID: ")
-#         sink_name = input("Enter Sink Name: ")
-#         audio_router.move_stream_to_device(stream_id, sink_name)
-#     else:
-#         print("Invalid choice!")
-
-# if __name__ == "__main__":
-#     main()
-
-
-####################################################################################################################################
-# Main Script with core functionality
-
 import subprocess
-from bluetooth_manager import BluetoothManager
+import re
 
 def list_sink_inputs():
-    """List all sink inputs (active audio streams)."""
+    """List all sink inputs (active audio streams) with application names."""
     try:
-        result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'], stdout=subprocess.PIPE, text=True)
+        result = subprocess.run(['pactl', 'list', 'sink-inputs'], stdout=subprocess.PIPE, text=True)
         lines = result.stdout.strip().split('\n')
+
         sink_inputs = {}
+        current_sink_input_id = None
+        current_app_name = None
+
         for line in lines:
-            parts = line.split()
-            sink_input_id = parts[0]
-            sink_id = parts[1]
-            app_name = ' '.join(parts[2:])
-            sink_inputs[sink_input_id] = app_name
+            # Match sink input ID
+            sink_input_match = re.search(r"Sink Input #(\d+)", line)
+            if sink_input_match:
+                current_sink_input_id = sink_input_match.group(1)
+            
+            # Match application name
+            app_name_match = re.search(r"application.name = \"([^\"]+)\"", line)
+            if app_name_match and current_sink_input_id:
+                current_app_name = app_name_match.group(1)
+                sink_inputs[current_sink_input_id] = current_app_name
+                current_sink_input_id = None  # Reset for the next sink input
+
         return sink_inputs
     except Exception as e:
         print(f"Error listing sink inputs: {e}")
         return {}
 
 def list_sinks():
-    """List all sinks (audio output devices)."""
+    """List all sinks (audio output devices) with human-readable names."""
     try:
-        result = subprocess.run(['pactl', 'list', 'short', 'sinks'], stdout=subprocess.PIPE, text=True)
+        result = subprocess.run(['pactl', 'list', 'sinks'], stdout=subprocess.PIPE, text=True)
         lines = result.stdout.strip().split('\n')
+
         sinks = {}
+        current_sink_id = None
+        current_sink_description = None
+
         for line in lines:
-            parts = line.split()
-            sink_id = parts[0]
-            sink_name = ' '.join(parts[1:])
-            sinks[sink_id] = sink_name
+            # Match sink ID
+            sink_match = re.search(r"Sink #(\d+)", line)
+            if sink_match:
+                current_sink_id = sink_match.group(1)
+            
+            # Match sink description (usually the device name)
+            sink_description_match = re.search(r"Description: (.+)", line)
+            if sink_description_match and current_sink_id:
+                current_sink_description = sink_description_match.group(1)
+                sinks[current_sink_id] = current_sink_description
+                current_sink_id = None  # Reset for the next sink
+
         return sinks
     except Exception as e:
         print(f"Error listing sinks: {e}")
@@ -81,21 +66,22 @@ def move_sink_input_to_sink(sink_input_id, sink_id):
         print(f"Error moving sink input: {e}")
 
 def main():
-    # Initialize BluetoothManager
-    bt_manager = BluetoothManager()
 
     print("Listing active audio streams...")
     sink_inputs = list_sink_inputs()
-    for id, name in sink_inputs.items():
-        print(f"ID: {id}, Application: {name}")
+    if sink_inputs:
+        for id, app_name in sink_inputs.items():
+            print(f"Sink Input ID: {id}, Application: {app_name}")
+    else:
+        print("No active audio streams found.")
 
     print("\nListing audio output devices (sinks)...")
     sinks = list_sinks()
-    for id, name in sinks.items():
-        print(f"ID: {id}, Sink: {name}")
-
-    print("\nListing Bluetooth devices...")
-    bt_manager.list_devices()
+    if sinks:
+        for id, name in sinks.items():
+            print(f"Sink ID: {id}, Output Device: {name}")
+    else:
+        print("No audio output devices found.")
 
     sink_input_id = input("\nEnter the sink input ID to move: ")
     sink_id = input("Enter the sink ID to move it to: ")
